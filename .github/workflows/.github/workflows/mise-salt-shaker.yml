@@ -1,0 +1,103 @@
+name: mise salt shaker
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mise-salt-shaker-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    name: check repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: verify workflow name
+        run: |
+          set -euo pipefail
+
+          workflow=".github/workflows/mise-salt-shaker.yml"
+
+          test -f "$workflow"
+
+          if grep -RInE 'mise[ -]+sales?[ -]+shaker|sales?[ -]+shaker' .github/workflows; then
+            echo "Invalid spelling found. Use: mise salt shaker"
+            exit 1
+          fi
+
+          grep -q '^name: mise salt shaker$' "$workflow"
+
+      - name: detect project files
+        run: |
+          set -euo pipefail
+
+          echo "## mise salt shaker" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Signal | Detected |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---:|" >> "$GITHUB_STEP_SUMMARY"
+
+          detect() {
+            label="$1"
+            shift
+
+            if "$@"; then
+              echo "| $label | yes |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| $label | no |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+
+          detect "README" test -f README.md
+          detect "LICENSE" sh -c 'test -f LICENSE || test -f LICENSE.md'
+          detect "Node" test -f package.json
+          detect "Python" sh -c 'test -f pyproject.toml || test -f requirements.txt'
+          detect "Go" test -f go.mod
+          detect "Rust" test -f Cargo.toml
+          detect "Java" sh -c 'test -f pom.xml || test -f build.gradle || test -f build.gradle.kts'
+          detect ".NET" sh -c 'find . -maxdepth 4 \( -name "*.sln" -o -name "*.csproj" \) | grep -q .'
+          detect "C/C++" sh -c 'test -f CMakeLists.txt'
+          detect "Docker" sh -c 'test -f Dockerfile || test -f compose.yml || test -f docker-compose.yml'
+
+      - name: run available checks
+        run: |
+          set -euo pipefail
+
+          run_if_present() {
+            label="$1"
+            file="$2"
+            command="$3"
+
+            if test -f "$file"; then
+              echo "Running $label"
+              bash -lc "$command"
+            else
+              echo "Skipping $label"
+            fi
+          }
+
+          run_if_present "Node tests" package.json "npm test --if-present"
+          run_if_present "Python compile check" pyproject.toml "python -m compileall ."
+          run_if_present "Go tests" go.mod "go test ./..."
+          run_if_present "Rust tests" Cargo.toml "cargo test"
+          run_if_present "Java Maven tests" pom.xml "mvn test"
+          run_if_present "CMake configure" CMakeLists.txt "cmake -S . -B build"
