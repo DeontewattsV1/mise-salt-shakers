@@ -1,670 +1,575 @@
-name: mise salt shaker
-run-name: >-
-mise salt shaker · ${{ github.event_name }} · ${{ github.ref_name }} ·
-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode ||
-'standard' }}
+name: Mise Sales Shaker
+
 on:
-workflow_dispatch:
-inputs:
-mode:
-description: Depth of checks to run
-required: false
-default: standard
-type: choice
-options:
-- light
-- standard
-- full
-target_branch:
-description: Branch to compare against in the branch advisor
-required: false
-default: main
-type: string
-pull_request:
-types:
-- opened
-- synchronize
-- reopened
-- ready_for_review
-push:
-branches:
-- main
-- master
-- develop
-- 'release/**'
+  workflow_dispatch:
+    inputs:
+      shaker_mode:
+        description: "How much seasoning to apply"
+        required: false
+        default: "standard"
+        type: choice
+        options:
+          - light
+          - standard
+          - full
+      target_branch:
+        description: "Branch to compare against"
+        required: false
+        default: "main"
+        type: string
+
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - "release/**"
+
+  schedule:
+    - cron: "17 15 * * 1"
+
 permissions:
-contents: read
+  contents: read
+  pull-requests: read
+  issues: read
+  actions: read
+
 concurrency:
-group: mise-salt-shaker-${{ github.workflow }}-${{ github.ref }}
-cancel-in-progress: true
+  group: mise-sales-shaker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 defaults:
-run:
-shell: bash
+  run:
+    shell: bash
+
 env:
-RUN_MODE: ${{ github.event_name == 'workflow_dispatch' &&
-github.event.inputs.mode || 'standard' }}
-REQUESTED_TARGET_BRANCH: ${{ github.event_name == 'workflow_dispatch' &&
-github.event.inputs.target_branch || '' }}
+  MISE_SHAKER_NAME: "Mise Sales Shaker"
+  MISE_SHAKER_VERSION: "1.0.0"
+  DEFAULT_TARGET_BRANCH: ${{ inputs.target_branch || 'main' }}
+  SHAKER_MODE: ${{ inputs.shaker_mode || 'standard' }}
+
 jobs:
-discover:
-name: Discover repository profile
-runs-on: ubuntu-latest
-timeout-minutes: 10
-outputs:
-target_branch: ${{ steps.detect.outputs.target_branch }}
-has_node: ${{ steps.detect.outputs.has_node }}
-has_python: ${{ steps.detect.outputs.has_python }}
-has_go: ${{ steps.detect.outputs.has_go }}
-has_rust: ${{ steps.detect.outputs.has_rust }}
-has_java: ${{ steps.detect.outputs.has_java }}
-has_dotnet: ${{ steps.detect.outputs.has_dotnet }}
-has_cpp: ${{ steps.detect.outputs.has_cpp }}
-has_php: ${{ steps.detect.outputs.has_php }}
-has_ruby: ${{ steps.detect.outputs.has_ruby }}
-has_shell: ${{ steps.detect.outputs.has_shell }}
-has_docker: ${{ steps.detect.outputs.has_docker }}
-has_docs: ${{ steps.detect.outputs.has_docs }}
-steps:
-- name: Check out repository
-uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-with:
-fetch-depth: 0
-persist-credentials: false
-- name: Detect languages and repository signals
-id: detect
-run: |
-set -euo pipefail
-bool() {
-if eval "$1"; then
-echo "true"
-else
-echo "false"
-fi
-}
-target_branch="${REQUESTED_TARGET_BRANCH:-}"
-if [[ -z "${target_branch}" ]]; then
-target_branch="${{ github.event.repository.default_branch }}"
-fi
-if [[ -z "${target_branch}" ]]; then
-target_branch="main"
-fi
-{
-echo "target_branch=${target_branch}"
-echo "has_node=$(bool 'test -f package.json')"
-echo "has_python=$(bool 'test -f pyproject.toml || test -f
-requirements.txt || find . -maxdepth 4 -type f -name \"*.py\" -print -quit |
-grep -q .')"
-echo "has_go=$(bool 'test -f go.mod')"
-echo "has_rust=$(bool 'test -f Cargo.toml')"
-echo "has_java=$(bool 'test -f pom.xml || test -f build.gradle ||
-test -f build.gradle.kts || test -x ./mvnw || test -x ./gradlew')"
-echo "has_dotnet=$(bool 'find . -maxdepth 4 -type f \( -name
-\"*.sln\" -o -name \"*.csproj\" \) -print -quit | grep -q .')"
-echo "has_cpp=$(bool 'test -f CMakeLists.txt || find . -maxdepth 4 -
-type f \( -name \"*.c\" -o -name \"*.cc\" -o -name \"*.cpp\" -o -name \"*.cxx\"
--o -name \"*.hpp\" -o -name \"*.h\" \) -print -quit | grep -q .')"
-echo "has_php=$(bool 'test -f composer.json')"
-echo "has_ruby=$(bool 'test -f Gemfile || find . -maxdepth 3 -type f -name
-\"*.gemspec\" -print -quit | grep -q .')"
-echo "has_shell=$(bool 'find . -maxdepth 4 -type f -name \"*.sh\" -
-print -quit | grep -q .')"
-echo "has_docker=$(bool 'test -f Dockerfile || test -f docker-
-compose.yml || test -f docker-compose.yaml || test -f compose.yml || test -f
-compose.yaml')"
-echo "has_docs=$(bool 'test -f README.md || test -d docs')"
-} >> "$GITHUB_OUTPUT"
-\` |"
-- name: Publish discovery summary
-run: |
-{
-echo "# mise salt shaker"
-echo
-echo "| Signal | Detected |"
-echo "|---|---:|"
-echo "| Target branch | \`${{ steps.detect.outputs.target_branch }}
-echo "| Node / JS / TS | ${{ steps.detect.outputs.has_node }} |"
-echo "| Python | ${{ steps.detect.outputs.has_python }} |"
-echo "| Go | ${{ steps.detect.outputs.has_go }} |"
-echo "| Rust | ${{ steps.detect.outputs.has_rust }} |"
-echo "| Java | ${{ steps.detect.outputs.has_java }} |"
-echo "| .NET | ${{ steps.detect.outputs.has_dotnet }} |"
-echo "| C / C++ | ${{ steps.detect.outputs.has_cpp }} |"
-echo "| PHP | ${{ steps.detect.outputs.has_php }} |"
-echo "| Ruby | ${{ steps.detect.outputs.has_ruby }} |"
-echo "| Shell | ${{ steps.detect.outputs.has_shell }} |"
-echo "| Docker | ${{ steps.detect.outputs.has_docker }} |"
-echo "| Docs | ${{ steps.detect.outputs.has_docs }} |"
-} >> "$GITHUB_STEP_SUMMARY"
-season:
-name: Run non-destructive checks
-runs-on: ubuntu-latest
-timeout-minutes: 40
-needs: discover
-steps:
-- name: Check out repository
-uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-with:
-fetch-depth: 0
-persist-credentials: false
-- name: Initialize result file
-run: |
-{
-echo "| Area | Status | Notes |"
-echo "|---|---|---|"
-} > "$RUNNER_TEMP/mise-salt-shaker-results.md"
-- name: Node / JS / TS checks
-if: needs.discover.outputs.has_node == 'true'
-run: |
-set -uo pipefail
-status="pass"
-notes=""
-append_note() {
-if [[ -n "${notes}" ]]; then
-notes="${notes}; $1"
-else
-notes="$1"
-fi
-}
-if [[ -f package-lock.json || -f npm-shrinkwrap.json ]]; then
-if ! npm ci --ignore-scripts; then status="warn"; fi
-append_note "install=npm-ci"
-elif [[ -f pnpm-lock.yaml ]]; then
-if ! corepack enable; then status="warn"; fi
-if ! pnpm install --frozen-lockfile --ignore-scripts; then
-status="warn"; fi
-append_note "install=pnpm"
-elif [[ -f yarn.lock ]]; then
-if ! corepack enable; then status="warn"; fi
-if ! yarn install --frozen-lockfile --ignore-scripts; then
-status="warn"; fi
-append_note "install=yarn"
-else
-status="warn"
-append_note "install=skipped-no-lockfile"
-fi
-if ! npm run lint --if-present; then status="warn"; fi
-append_note "lint=if-present"
-if ! npm test --if-present; then status="warn"; fi
-append_note "test=if-present"
-if [[ "${RUN_MODE}" == "full" ]]; then
-if ! npm run build --if-present; then status="warn"; fi
-append_note "build=if-present"
-fi
-printf '| Node / JS / TS | %s | %s |\n' "$status" "${notes:-none}" >>
-"$RUNNER_TEMP/mise-salt-shaker-results.md"
-- name: Python checks
-if: needs.discover.outputs.has_python == 'true'
-run: |
-set -uo pipefail
-status="pass"
-notes=""
-append_note() {
-if [[ -n "${notes}" ]]; then
-notes="${notes}; $1"
-else
-notes="$1"
-fi
-}
-fi
-if ! python -m pip install --upgrade pip; then status="warn"; fi
-append_note "pip=upgraded"
-if [[ -f requirements.txt ]]; then
-if ! python -m pip install -r requirements.txt; then status="warn";
-append_note "requirements=requirements.txt"
-fi
-if [[ -f requirements-dev.txt ]]; then
-if ! python -m pip install -r requirements-dev.txt; then
-status="warn"; fi
-append_note "requirements=requirements-dev.txt"
-fi
-if ! python -m pip install ruff pytest; then status="warn"; fi
-append_note "tools=ruff,pytest"
-if find . -type f -name '*.py' -not -path './.git/*' -print -quit |
-grep -q .; then
-if ! python -m ruff check .; then status="warn"; fi
-append_note "lint=ruff"
-fi
-if find . -type f \( -path '*/tests/*' -o -name 'test_*.py' -o -name
-'*_test.py' \) -print -quit | grep -q .; then
-if ! python -m pytest -q; then status="warn"; fi
-append_note "test=pytest"
-else
-append_note "test=skipped-no-tests"
-fi
-if [[ "${RUN_MODE}" == "full" ]]; then
-if ! python -m compileall -q .; then status="warn"; fi
-append_note "build=compileall"
-f
-printf '| Python | %s | %s |\n' "$status" "${notes:-none}" >>
-"$RUNNER_TEMP/mise-salt-shaker-results.md"
-- name: Go checks
-if: needs.discover.outputs.has_go == 'true'
-run: |
-set -uo pipefail
-status="pass"
-notes=""
-append_note() {
-if [[ -n "${notes}" ]]; then
-notes="${notes}; $1"
-else
-notes="$1"
-fi
-}
-if ! go mod download; then status="warn"; fi
-append_note "deps=go-mod-download"
-if ! go vet ./...; then status="warn"; fi
-append_note "lint=go-vet"
-if ! go test ./...; then status="warn"; fi
-append_note "test=go-test"
-if [[ "${RUN_MODE}" == "full" ]]; then
-if ! go build ./...; then status="warn"; fi
-append_note "build=go-build"
-fi
-printf '| Go | %s | %s |\n' "$status" "${notes:-none}" >>
-"$RUNNER_TEMP/mise-salt-shaker-results.md"
-- name: Rust checks
-if: needs.discover.outputs.has_rust == 'true'
-run: |
-set -uo pipefail
-status="pass"
-notes=""
-append_note() {
-if [[ -n "${notes}" ]]; then
-notes="${notes}; $1"
-else
-notes="$1"
-fi
-}
-if ! (cargo fetch --locked || cargo fetch); then status="warn"; fi
-append_note "deps=cargo-fetch"
-if ! cargo fmt --all --check; then status="warn"; fi
-append_note "fmt=cargo-fmt"
-if ! cargo clippy --workspace --all-targets --all-features -- -D
-warnings; then status="warn"; fi
-append_note "lint=clippy"
-if ! cargo test --workspace --all-features; then status="warn"; fi
-append_note "test=cargo-test"
-if [[ "${RUN_MODE}" == "full" ]]; then
-if ! cargo build --workspace --all-features; then status="warn"; fi
-append_note "build=cargo-build"
-fi
-printf '| Rust | %s | %s |\n' "$status" "${notes:-none}" >>
-"$RUNNER_TEMP/mise-salt-shaker-results.md"
-- name: Java checks
-if: needs.discover.outputs.has_java == 'true'
-run: |
-set -uo pipefail
-status="pass"
-notes=""
-append_note() {
-if [[ -n "${notes}" ]]; then
-notes="${notes}; $1"
-else
-notes="$1"
-fi
-}
-if [[ -x ./mvnw ]]; then
-if ! ./mvnw -B -ntp test; then status="warn"; fi
-append_note "build=maven-wrapper-test"
-elif [[ -f pom.xml ]]; then
-if ! mvn -B -ntp test; then status="warn"; fi
-append_note "build=maven-test"
-elif [[ -x ./gradlew ]]; then
-if ! ./gradlew test --no-daemon; then status="warn"; fi
-append_note "build=gradle-wrapper-test"
-elif [[ -f build.gradle || -f build.gradle.kts ]]; then
-if command -v gradle >/dev/null 2>&1; then
-if ! gradle test --no-daemon; then status="warn"; fi
-append_note "build=gradle-test"
-else
-status="warn"
-append_note "build=skipped-no-gradle-wrapper"
-fi
-else
-status="warn"
-append_note "build=skipped-no-java-build-file"
-fi
-printf '| Java | %s | %s |\n' "$status" "${notes:-none}" >>
-"$RUNNER_TEMP/mise-salt-shaker-results.md"
-- name: .NET checks
-if: needs.discover.outputs.has_dotnet == 'true'
-run: |
-set -uo pipefail
-status="pass"
-notes=""
-append_note() {
-if [[ -n "${notes}" ]]; then
-notes="${notes}; $1"
-else
-notes="$1"
-fi
-}
-if ! dotnet restore; then status="warn"; fi
-append_note "restore=dotnet-restore"
-status="warn"; fi
-if ! dotnet build --no-restore --configuration Release; then
-append_note "build=dotnet-build"
-if find . -type f \( -name '*Test*.csproj' -o -name '*Tests*.csproj'
-\) -print -quit | grep -q .; then
-if ! dotnet test --no-build --configuration Release --verbosity
-normal; then status="warn"; fi
-append_note "test=dotnet-test"
-else
-append_note "test=skipped-no-test-project"
-fi
-printf '| .NET | %s | %s |\n' "$status" "${notes:-none}" >>
-"$RUNNER_TEMP/mise-salt-shaker-results.md"
-- name: C / C++ checks
-if: needs.discover.outputs.has_cpp == 'true'
-run: |
-set -uo pipefail
-status="pass"
-notes=""
-append_note() {
-if [[ -n "${notes}" ]]; then
-notes="${notes}; $1"
-else
-notes="$1"
-fi
-}
-if [[ -f CMakeLists.txt ]]; then
-if ! cmake -S . -B "$RUNNER_TEMP/cmake-build" -
-DCMAKE_BUILD_TYPE=Release; then status="warn"; fi
-if ! cmake --build "$RUNNER_TEMP/cmake-build" --parallel; then
-status="warn"; fi
-append_note "build=cmake"
-if [[ "${RUN_MODE}" != "light" ]]; then
-if ! ctest --test-dir "$RUNNER_TEMP/cmake-build" --output-on-
-failure; then status="warn"; fi
-append_note "test=ctest"
-fi
-else
-status="warn"
-append_note "build=skipped-no-cmake"
-fi
-printf '| C / C++ | %s | %s |\n' "$status" "${notes:-none}" >>
-"$RUNNER_TEMP/mise-salt-shaker-results.md"
-- name: PHP checks
-if: needs.discover.outputs.has_php == 'true'
-run: |
-set -uo pipefail
-status="pass"
-notes=""
-append_note() {
-if [[ -n "${notes}" ]]; then
-notes="${notes}; $1"
-else
-notes="$1"
-fi
-}
-if ! composer install --no-interaction --no-progress --prefer-dist --
-no-scripts; then status="warn"; fi
-append_note "deps=composer-install"
-if [[ -x vendor/bin/phpunit ]]; then
-if ! vendor/bin/phpunit; then status="warn"; fi
-append_note "test=phpunit"
-elif [[ -f phpunit.xml || -f phpunit.xml.dist ]]; then
-if command -v phpunit >/dev/null 2>&1; then
-if ! phpunit; then status="warn"; fi
-append_note "test=phpunit-global"
-else
-status="warn"
-append_note "test=skipped-no-phpunit"
-fi
-else
-append_note "test=skipped-no-phpunit-config"
-fi
-printf '| PHP | %s | %s |\n' "$status" "${notes:-none}" >>
-"$RUNNER_TEMP/mise-salt-shaker-results.md"
-- name: Ruby checks
-if: needs.discover.outputs.has_ruby == 'true'
-run: |
-set -uo pipefail
-status="pass"
-notes=""
-export BUNDLE_PATH="$RUNNER_TEMP/bundle"
-append_note() {
-if [[ -n "${notes}" ]]; then
-notes="${notes}; $1"
-else
-notes="$1"
-fi
-}
-if ! bundle install --jobs 4 --retry 3; then status="warn"; fi
-append_note "deps=bundle-install"
-if [[ -f Rakefile ]]; then
-if ! bundle exec rake test; then
-if ! bundle exec rake spec; then status="warn"; fi
-fi
-append_note "test=rake"
-elif [[ -d spec ]]; then
-if ! bundle exec rspec; then status="warn"; fi
-append_note "test=rspec"
-else
-append_note "test=skipped-no-ruby-test-entrypoint"
-fi
-printf '| Ruby | %s | %s |\n' "$status" "${notes:-none}" >>
-"$RUNNER_TEMP/mise-salt-shaker-results.md"
-- name: Shell checks
-if: needs.discover.outputs.has_shell == 'true'
-run: |
-set -uo pipefail
-status="pass"
-notes=""
-append_note() {
-if [[ -n "${notes}" ]]; then
-notes="${notes}; $1"
-else
-notes="$1"
-fi
-}
-if ! sudo apt-get update; then status="warn"; fi
-if ! sudo apt-get install -y shellcheck; then status="warn"; fi
-append_note "tool=shellcheck"
-if find . -type f -name '*.sh' -not -path './.git/*' -print -quit |
-grep -q .; then
-if ! find . -type f -name '*.sh' -not -path './.git/*' -print0 |
-xargs -0 -r shellcheck; then status="warn"; fi
-append_note "lint=shellcheck"
-else
-append_note "lint=skipped-no-shell-files"
-fi
-printf '| Shell | %s | %s |\n' "$status" "${notes:-none}" >>
-"$RUNNER_TEMP/mise-salt-shaker-results.md"
-- name: Docker checks
-if: needs.discover.outputs.has_docker == 'true'
-run: |
-set -uo pipefail
-status="pass"
-notes=""
-append_note() {
-if [[ -n "${notes}" ]]; then
-notes="${notes}; $1"
-else
-notes="$1"
-fi
-}
-compose_file=""
-for f in docker-compose.yml docker-compose.yaml compose.yml
-compose.yaml; do
-if [[ -f "$f" ]]; then
-compose_file="$f"
-break
-fi
-done
-if [[ -n "${compose_file}" ]]; then
-if ! docker compose -f "${compose_file}" config -q; then
-status="warn"; fi
-append_note "compose=${compose_file}"
-fi
-if [[ -f Dockerfile ]]; then
-if [[ "${RUN_MODE}" == "full" ]]; then
-if ! docker build --pull --tag mise-salt-shaker:${GITHUB_SHA} .;
-then status="warn"; fi
-append_note "build=docker-build"
-else
-append_note "build=skipped-nonfull"
-fi
-fi
-printf '| Docker | %s | %s |\n' "$status" "${notes:-none}" >>
-"$RUNNER_TEMP/mise-salt-shaker-results.md"
-- name: Publish season summary
-run: |
-results.md" || true)"
-{
-warnings="$(grep -c '| warn |' "$RUNNER_TEMP/mise-salt-shaker-
-echo "## Non-destructive checks"
-echo
-echo "**Mode:** \`${RUN_MODE}\`"
-echo
-cat "$RUNNER_TEMP/mise-salt-shaker-results.md"
-echo
-echo "**Warnings:** ${warnings}"
-echo
-echo "This workflow is advisory: it summarizes checks, but it does
-not push, merge, approve, or edit repository content."
-} >> "$GITHUB_STEP_SUMMARY"
-sales_readiness:
-name: Score sales readiness
-runs-on: ubuntu-latest
-timeout-minutes: 10
-needs: discover
-steps:
-- name: Check out repository
-uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-with:
-fetch-depth: 1
-persist-credentials: false
-- name: Calculate score
-run: |
-set -euo pipefail
-score=0
-max=100
-add() {
-shaker-score.md"
-score=$((score + $1))
-printf '| %s | ✅ | +%s |\n' "$2" "$1" >> "$RUNNER_TEMP/mise-salt-
-}
-miss() {
-printf '| %s | ⚠️ | +0 |\n' "$1" >> "$RUNNER_TEMP/mise-salt-shaker-
-score.md"
-}
-{
-echo "| Signal | Status | Points |"
-echo "|---|---|---:|"
-} > "$RUNNER_TEMP/mise-salt-shaker-score.md"
-[[ -f README.md ]] && add 15 "README" || miss "README"
-[[ -f LICENSE || -f LICENSE.md ]] && add 10 "License" || miss
-"License"
-[[ -d docs ]] && add 10 "docs/" || miss "docs/"
-[[ -f CONTRIBUTING.md || -f docs/CONTRIBUTING.md ]] && add 10
-"CONTRIBUTING.md" || miss "CONTRIBUTING.md"
-[[ -f SECURITY.md || -f docs/SECURITY.md ]] && add 10 "SECURITY.md" || miss
-"SECURITY.md"
-[[ -f CODE_OF_CONDUCT.md || -f docs/CODE_OF_CONDUCT.md ]] && add 5
-"CODE_OF_CONDUCT.md" || miss "CODE_OF_CONDUCT.md"
-[[ -f CHANGELOG.md || -f RELEASES.md ]] && add 10 "CHANGELOG /
-RELEASES" || miss "CHANGELOG / RELEASES"
-[[ -d .github/workflows ]] && add 10 ".github/workflows" || miss
-".github/workflows"
-[[ -f .github/dependabot.yml ]] && add 10 "Dependabot" || miss
-"Dependabot"
-[[ -d .github/ISSUE_TEMPLATE || -f .github/pull_request_template.md ]] && add 10
-"Issue / PR templates" || miss "Issue / PR templates"
-grade="needs seasoning"
-if (( score >= 85 )); then
-grade="promotion ready"
-elif (( score >= 70 )); then
-grade="close to ready"
-elif (( score >= 50 )); then
-grade="partially ready"
-fi
-{
-echo "## Sales readiness"
-echo
-echo "**Score:** ${score}/${max}"
-echo
-echo "**Grade:** ${grade}"
-echo
-cat "$RUNNER_TEMP/mise-salt-shaker-score.md"
-} >> "$GITHUB_STEP_SUMMARY"
-branch_advisor:
-name: Recommend the next branch
-runs-on: ubuntu-latest
-timeout-minutes: 10
-needs:
-- discover
-- season
-- sales_readiness
-if: always()
-steps:
-- name: Check out repository
-uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-with:
-fetch-depth: 0
-persist-credentials: false
-- name: Recommend a branch without mutating the repository
-env:
-run: |
-TARGET_BRANCH: ${{ needs.discover.outputs.target_branch }}
-CURRENT_BRANCH: ${{ github.head_ref || github.ref_name }}
-set -euo pipefail
-target="${TARGET_BRANCH:-main}"
-current="${CURRENT_BRANCH:-}"
-then
-if ! git show-ref --verify --quiet "refs/remotes/origin/${target}";
-if git show-ref --verify --quiet refs/remotes/origin/main; then
-target="main"
-elif git show-ref --verify --quiet refs/remotes/origin/master; then
-target="master"
-fi
-fi
-best=""
-reason="No non-default branch ahead of ${target} was visible on
-origin."
-if [[ -n "${current}" && "${current}" != "${target}" ]] && git show-
-ref --verify --quiet "refs/remotes/origin/${current}"; then
-ahead="$(git rev-list --count "origin/${target}..origin/${current}"
-2>/dev/null || echo 0)"
-behind="$(git rev-list --count "origin/${current}..origin/${target}" 2>/dev/null
-|| echo 0)"
-if (( ahead > 0 )); then
-best="${current}"
-reason="${current} is ${ahead} commit(s) ahead of ${target} and $
-{behind} commit(s) behind."
-fi
-fi
-if [[ -z "${best}" ]]; then
-while IFS='|' read -r ref updated; do
-clean="${ref#origin/}"
-[[ -z "${clean}" || "${clean}" == "HEAD" || "${clean}" == "$
-{target}" || "${clean}" == "main" || "${clean}" == "master" ]] && continue
-ahead="$(git rev-list --count "origin/${target}..${ref}" 2>/dev/
-null || echo 0)"
-behind="$(git rev-list --count "${ref}..origin/${target}" 2>/dev/
-null || echo 999999)"
-if (( ahead > 0 && behind <= 50 )); then
-best="${clean}"
-reason="${clean} is ${ahead} commit(s) ahead of ${target} and $
-{behind} commit(s) behind."
-break
-fi
-done < <(git for-each-ref refs/remotes/origin --format='%
-(refname:short)|%(committerdate:iso8601)' --sort=-committerdate)
-fi
-{
-echo "## Branch advisor"
-echo
-echo "- Target branch: \`${target}\`"
-echo "- Current branch context: \`${current:-n/a}\`"
-if [[ -n "${best}" ]]; then
-echo "- Recommended next branch: \`${best}\`"
-echo "- Reason: ${reason}"
-else
-echo "- Recommended next branch: none"
-echo "- Reason: ${reason}"
-fi
-echo
-echo "This job only recommends. It does not push, merge, delete
-branches, or edit repository content."
-} >> "$GITHUB_STEP_SUMMARY"
+  discover:
+    name: Discover repo flavor
+    runs-on: ubuntu-latest
+    outputs:
+      has_node: ${{ steps.detect.outputs.has_node }}
+      has_python: ${{ steps.detect.outputs.has_python }}
+      has_go: ${{ steps.detect.outputs.has_go }}
+      has_rust: ${{ steps.detect.outputs.has_rust }}
+      has_java: ${{ steps.detect.outputs.has_java }}
+      has_dotnet: ${{ steps.detect.outputs.has_dotnet }}
+      has_cpp: ${{ steps.detect.outputs.has_cpp }}
+      has_php: ${{ steps.detect.outputs.has_php }}
+      has_ruby: ${{ steps.detect.outputs.has_ruby }}
+      has_shell: ${{ steps.detect.outputs.has_shell }}
+      has_docker: ${{ steps.detect.outputs.has_docker }}
+      has_docs: ${{ steps.detect.outputs.has_docs }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect repository ingredients
+        id: detect
+        run: |
+          set -euo pipefail
+
+          bool() {
+            if eval "$1"; then
+              echo "true"
+            else
+              echo "false"
+            fi
+          }
+
+          {
+            echo "has_node=$(bool 'test -f package.json')"
+            echo "has_python=$(bool 'test -f pyproject.toml || test -f requirements.txt || find . -maxdepth 3 -name \"*.py\" | grep -q .')"
+            echo "has_go=$(bool 'test -f go.mod')"
+            echo "has_rust=$(bool 'test -f Cargo.toml')"
+            echo "has_java=$(bool 'test -f pom.xml || test -f build.gradle || test -f build.gradle.kts')"
+            echo "has_dotnet=$(bool 'find . -maxdepth 4 \( -name \"*.csproj\" -o -name \"*.sln\" \) | grep -q .')"
+            echo "has_cpp=$(bool 'test -f CMakeLists.txt || find . -maxdepth 4 \( -name \"*.cpp\" -o -name \"*.cc\" -o -name \"*.cxx\" -o -name \"*.hpp\" \) | grep -q .')"
+            echo "has_php=$(bool 'test -f composer.json')"
+            echo "has_ruby=$(bool 'test -f Gemfile || test -f *.gemspec')"
+            echo "has_shell=$(bool 'find . -maxdepth 4 -name \"*.sh\" | grep -q .')"
+            echo "has_docker=$(bool 'test -f Dockerfile || test -f docker-compose.yml || test -f compose.yml')"
+            echo "has_docs=$(bool 'test -f README.md || test -d docs')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Write discovery summary
+        run: |
+          set -euo pipefail
+
+          {
+            echo "# 🧂 Mise Sales Shaker"
+            echo ""
+            echo "**Concept:** goes with everything, makes everything better."
+            echo ""
+            echo "## Repository Flavor Map"
+            echo ""
+            echo "| Ingredient | Detected |"
+            echo "|---|---:|"
+            echo "| Node / TypeScript / JavaScript | ${{ steps.detect.outputs.has_node }} |"
+            echo "| Python | ${{ steps.detect.outputs.has_python }} |"
+            echo "| Go | ${{ steps.detect.outputs.has_go }} |"
+            echo "| Rust | ${{ steps.detect.outputs.has_rust }} |"
+            echo "| Java / JVM | ${{ steps.detect.outputs.has_java }} |"
+            echo "| .NET | ${{ steps.detect.outputs.has_dotnet }} |"
+            echo "| C / C++ | ${{ steps.detect.outputs.has_cpp }} |"
+            echo "| PHP | ${{ steps.detect.outputs.has_php }} |"
+            echo "| Ruby | ${{ steps.detect.outputs.has_ruby }} |"
+            echo "| Shell | ${{ steps.detect.outputs.has_shell }} |"
+            echo "| Docker | ${{ steps.detect.outputs.has_docker }} |"
+            echo "| Docs | ${{ steps.detect.outputs.has_docs }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  season:
+    name: Season detected stacks
+    runs-on: ubuntu-latest
+    needs: discover
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare shaker report
+        run: |
+          set -euo pipefail
+          mkdir -p .mise-shaker
+          : > .mise-shaker/results.md
+
+          {
+            echo "# Mise Sales Shaker Quality Pass"
+            echo ""
+            echo "| Stack | Status | Notes |"
+            echo "|---|---|---|"
+          } >> .mise-shaker/results.md
+
+      - name: Node / TypeScript / JavaScript pass
+        if: needs.discover.outputs.has_node == 'true'
+        run: |
+          set +e
+
+          status="pass"
+          notes=()
+
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          else
+            npm install --ignore-scripts
+          fi
+
+          if npm run | grep -qE " lint"; then
+            npm run lint || status="warn"
+            notes+=("lint checked")
+          else
+            notes+=("no lint script")
+          fi
+
+          if npm run | grep -qE " test"; then
+            npm test || status="warn"
+            notes+=("tests checked")
+          else
+            notes+=("no test script")
+          fi
+
+          echo "| Node / TS / JS | ${status} | ${notes[*]} |" >> .mise-shaker/results.md
+
+      - name: Python pass
+        if: needs.discover.outputs.has_python == 'true'
+        run: |
+          set +e
+
+          status="pass"
+          notes=()
+
+          python -m pip install --upgrade pip
+
+          if [[ -f requirements.txt ]]; then
+            python -m pip install -r requirements.txt || status="warn"
+            notes+=("requirements installed")
+          fi
+
+          if [[ -f pyproject.toml ]]; then
+            python -m pip install . || status="warn"
+            notes+=("pyproject install checked")
+          fi
+
+          python -m pip install ruff pytest >/dev/null 2>&1 || true
+
+          if find . -maxdepth 5 -name "*.py" | grep -q .; then
+            python -m ruff check . || status="warn"
+            notes+=("ruff checked")
+          fi
+
+          if [[ -d tests ]]; then
+            python -m pytest || status="warn"
+            notes+=("pytest checked")
+          else
+            notes+=("no tests directory")
+          fi
+
+          echo "| Python | ${status} | ${notes[*]} |" >> .mise-shaker/results.md
+
+      - name: Go pass
+        if: needs.discover.outputs.has_go == 'true'
+        run: |
+          set +e
+
+          status="pass"
+          go mod download || status="warn"
+          go vet ./... || status="warn"
+          go test ./... || status="warn"
+
+          echo "| Go | ${status} | go vet + go test |" >> .mise-shaker/results.md
+
+      - name: Rust pass
+        if: needs.discover.outputs.has_rust == 'true'
+        run: |
+          set +e
+
+          status="pass"
+          cargo fmt --check || status="warn"
+          cargo clippy --all-targets --all-features -- -D warnings || status="warn"
+          cargo test --all-features || status="warn"
+
+          echo "| Rust | ${status} | fmt + clippy + test |" >> .mise-shaker/results.md
+
+      - name: Java / JVM pass
+        if: needs.discover.outputs.has_java == 'true'
+        run: |
+          set +e
+
+          status="pass"
+
+          if [[ -f pom.xml ]]; then
+            mvn test || status="warn"
+            echo "| Java / Maven | ${status} | mvn test |" >> .mise-shaker/results.md
+          elif [[ -x ./gradlew ]]; then
+            ./gradlew test || status="warn"
+            echo "| Java / Gradle | ${status} | gradlew test |" >> .mise-shaker/results.md
+          else
+            echo "| Java / JVM | warn | build file found, no executable wrapper detected |" >> .mise-shaker/results.md
+          fi
+
+      - name: .NET pass
+        if: needs.discover.outputs.has_dotnet == 'true'
+        run: |
+          set +e
+
+          status="pass"
+          dotnet restore || status="warn"
+          dotnet test --no-restore || status="warn"
+
+          echo "| .NET | ${status} | restore + test |" >> .mise-shaker/results.md
+
+      - name: C / C++ pass
+        if: needs.discover.outputs.has_cpp == 'true'
+        run: |
+          set +e
+
+          status="pass"
+
+          if [[ -f CMakeLists.txt ]]; then
+            cmake -S . -B build || status="warn"
+            cmake --build build || status="warn"
+            ctest --test-dir build --output-on-failure || status="warn"
+            echo "| C / C++ | ${status} | cmake build + ctest |" >> .mise-shaker/results.md
+          else
+            echo "| C / C++ | warn | source detected, no CMakeLists.txt found |" >> .mise-shaker/results.md
+          fi
+
+      - name: PHP pass
+        if: needs.discover.outputs.has_php == 'true'
+        run: |
+          set +e
+
+          status="pass"
+          composer install --no-interaction --prefer-dist || status="warn"
+
+          if [[ -f vendor/bin/phpunit ]]; then
+            vendor/bin/phpunit || status="warn"
+            echo "| PHP | ${status} | composer + phpunit |" >> .mise-shaker/results.md
+          else
+            echo "| PHP | ${status} | composer install; no phpunit found |" >> .mise-shaker/results.md
+          fi
+
+      - name: Ruby pass
+        if: needs.discover.outputs.has_ruby == 'true'
+        run: |
+          set +e
+
+          status="pass"
+          bundle install || status="warn"
+
+          if bundle exec rake -T | grep -q "test"; then
+            bundle exec rake test || status="warn"
+            echo "| Ruby | ${status} | bundle + rake test |" >> .mise-shaker/results.md
+          else
+            echo "| Ruby | ${status} | bundle install; no test task found |" >> .mise-shaker/results.md
+          fi
+
+      - name: Shell pass
+        if: needs.discover.outputs.has_shell == 'true'
+        run: |
+          set +e
+
+          status="pass"
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          find . -maxdepth 5 -name "*.sh" -print0 | xargs -0 shellcheck || status="warn"
+
+          echo "| Shell | ${status} | shellcheck |" >> .mise-shaker/results.md
+
+      - name: Docker pass
+        if: needs.discover.outputs.has_docker == 'true'
+        run: |
+          set +e
+
+          status="pass"
+
+          if [[ -f Dockerfile ]]; then
+            docker build --no-cache -t mise-sales-shaker-local:ci . || status="warn"
+            echo "| Docker | ${status} | docker build checked |" >> .mise-shaker/results.md
+          else
+            echo "| Docker | pass | compose file detected; no Dockerfile build attempted |" >> .mise-shaker/results.md
+          fi
+
+      - name: Publish seasoning summary
+        run: |
+          set -euo pipefail
+
+          {
+            echo ""
+            echo "## Seasoning Results"
+            cat .mise-shaker/results.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  sales-readiness:
+    name: Score repo sales readiness
+    runs-on: ubuntu-latest
+    needs:
+      - discover
+      - season
+    if: always()
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Generate sales-readiness score
+        run: |
+          set -euo pipefail
+
+          score=0
+          max=100
+          notes=()
+
+          add_score() {
+            local points="$1"
+            local message="$2"
+            score=$((score + points))
+            notes+=("✅ ${message}")
+          }
+
+          miss() {
+            local message="$1"
+            notes+=("⚠️ ${message}")
+          }
+
+          [[ -f README.md ]] && add_score 15 "README.md present" || miss "Add README.md"
+          [[ -f LICENSE || -f LICENSE.md ]] && add_score 10 "License present" || miss "Add LICENSE"
+          [[ -f CONTRIBUTING.md || -f docs/CONTRIBUTING.md ]] && add_score 10 "Contribution path present" || miss "Add CONTRIBUTING.md"
+          [[ -f SECURITY.md || -f docs/SECURITY.md ]] && add_score 10 "Security policy present" || miss "Add SECURITY.md"
+          [[ -f CODE_OF_CONDUCT.md || -f docs/CODE_OF_CONDUCT.md ]] && add_score 5 "Code of conduct present" || miss "Add CODE_OF_CONDUCT.md"
+          [[ -d docs ]] && add_score 10 "Docs directory present" || miss "Add docs/"
+          [[ -f CHANGELOG.md || -f RELEASES.md ]] && add_score 10 "Release history present" || miss "Add CHANGELOG.md"
+          [[ -f .github/dependabot.yml ]] && add_score 10 "Dependabot configured" || miss "Add .github/dependabot.yml"
+          [[ -d .github/workflows ]] && add_score 10 "GitHub Actions present" || miss "Add workflow automation"
+          [[ -f Dockerfile || -f docker-compose.yml || -f compose.yml ]] && add_score 10 "Deployment/container path present" || miss "Add Dockerfile or compose.yml"
+
+          grade="Needs Mise"
+          if (( score >= 85 )); then
+            grade="Shelf Ready"
+          elif (( score >= 70 )); then
+            grade="Almost Ready"
+          elif (( score >= 50 )); then
+            grade="Needs Seasoning"
+          fi
+
+          {
+            echo "# Mise Sales Shaker Sales Readiness"
+            echo ""
+            echo "**Score:** ${score}/${max}"
+            echo ""
+            echo "**Grade:** ${grade}"
+            echo ""
+            echo "## Checks"
+            echo ""
+            for note in "${notes[@]}"; do
+              echo "- ${note}"
+            done
+            echo ""
+            echo "## Recommendation"
+            echo ""
+            if (( score < 70 )); then
+              echo "Prioritize README, docs, security policy, contribution path, and release notes before promotion."
+            elif (( score < 85 )); then
+              echo "Repo is close. Add polish: changelog, examples, demo path, and clearer onboarding."
+            else
+              echo "Repo is promotion-ready. Keep the seasoning fresh with scheduled checks."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  branch-advisor:
+    name: Recommend next branch
+    runs-on: ubuntu-latest
+    needs:
+      - discover
+      - season
+      - sales-readiness
+    if: always()
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Inspect branches without mutating repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TARGET_BRANCH: ${{ env.DEFAULT_TARGET_BRANCH }}
+        run: |
+          set -euo pipefail
+
+          git fetch --all --prune
+
+          current_branch="${GITHUB_REF_NAME}"
+          target_branch="${TARGET_BRANCH}"
+
+          if ! git show-ref --verify --quiet "refs/remotes/origin/${target_branch}"; then
+            if git show-ref --verify --quiet "refs/remotes/origin/master"; then
+              target_branch="master"
+            else
+              target_branch="${current_branch}"
+            fi
+          fi
+
+          mapfile -t branches < <(
+            git for-each-ref refs/remotes/origin \
+              --format="%(refname:short)|%(committerdate:iso8601)" \
+              | grep -v "origin/HEAD" \
+              | sort -t "|" -k2 -r \
+              | head -20
+          )
+
+          best_branch=""
+          best_reason="No candidate branch found."
+
+          for row in "${branches[@]}"; do
+            branch="${row%%|*}"
+            clean="${branch#origin/}"
+
+            [[ "${clean}" == "${target_branch}" ]] && continue
+            [[ "${clean}" == "main" ]] && continue
+            [[ "${clean}" == "master" ]] && continue
+
+            ahead="$(git rev-list --count "origin/${target_branch}..${branch}" 2>/dev/null || echo 0)"
+            behind="$(git rev-list --count "${branch}..origin/${target_branch}" 2>/dev/null || echo 999)"
+
+            if [[ "${ahead}" -gt 0 && "${behind}" -le 20 ]]; then
+              best_branch="${clean}"
+              best_reason="${clean} is ${ahead} commit(s) ahead of ${target_branch} and ${behind} commit(s) behind."
+              break
+            fi
+          done
+
+          open_prs="$(gh pr list --repo "${REPO}" --state open --json number,title,headRefName,baseRefName,isDraft,mergeable,updatedAt --limit 20 || echo "[]")"
+
+          {
+            echo "# Mise Sales Shaker Branch Advisor"
+            echo ""
+            echo "**Target branch:** \`${target_branch}\`"
+            echo ""
+            if [[ -n "${best_branch}" ]]; then
+              echo "**Recommended next branch:** \`${best_branch}\`"
+              echo ""
+              echo "**Reason:** ${best_reason}"
+              echo ""
+              echo "Suggested local commands:"
+              echo ""
+              echo '```bash'
+              echo "git fetch origin"
+              echo "git checkout ${target_branch}"
+              echo "git pull --ff-only origin ${target_branch}"
+              echo "git checkout ${best_branch}"
+              echo "git rebase origin/${target_branch}"
+              echo "git push --force-with-lease origin ${best_branch}"
+              echo "# Then open or update a PR into ${target_branch}"
+              echo '```'
+            else
+              echo "**Recommended next branch:** none"
+              echo ""
+              echo "${best_reason}"
+            fi
+
+            echo ""
+            echo "## Open PR Snapshot"
+            echo ""
+            echo '```json'
+            echo "${open_prs}"
+            echo '```'
+            echo ""
+            echo "## Safety Rule"
+            echo ""
+            echo "This workflow only recommends. It does not merge, push, delete branches, or edit repository files."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  final-verdict:
+    name: Final shaker verdict
+    runs-on: ubuntu-latest
+    needs:
+      - discover
+      - season
+      - sales-readiness
+      - branch-advisor
+    if: always()
+
+    steps:
+      - name: Print final verdict
+        run: |
+          set -euo pipefail
+
+          {
+            echo "# Final Mise Sales Shaker Verdict"
+            echo ""
+            echo "| Layer | Result |"
+            echo "|---|---|"
+            echo "| Discovery | ${{ needs.discover.result }} |"
+            echo "| Stack seasoning | ${{ needs.season.result }} |"
+            echo "| Sales readiness | ${{ needs.sales-readiness.result }} |"
+            echo "| Branch advisor | ${{ needs.branch-advisor.result }} |"
+            echo ""
+            echo "**Operating principle:** every repo gets better seasoning, but no automation gets to touch the stove without permission."
+          } >> "$GITHUB_STEP_SUMMARY"
