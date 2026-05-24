@@ -1,0 +1,139 @@
+name: mise salt shaker
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mise-salt-shaker-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    name: check repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: verify name
+        run: |
+          set -euo pipefail
+
+          workflow=".github/workflows/mise-salt-shaker.yml"
+
+          test -f "$workflow"
+          grep -q '^name: mise salt shaker$' "$workflow"
+
+          if grep -RInE 'mise[ -]+sales?[ -]+shaker|sales?[ -]+shaker' .github/workflows; then
+            echo "Invalid spelling found. Use: mise salt shaker"
+            exit 1
+          fi
+
+      - name: detect project files
+        run: |
+          set -euo pipefail
+
+          echo "## mise salt shaker" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Signal | Detected |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---:|" >> "$GITHUB_STEP_SUMMARY"
+
+          detect() {
+            label="$1"
+            shift
+
+            if "$@"; then
+              echo "| $label | yes |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| $label | no |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+
+          detect "README" test -f README.md
+          detect "LICENSE" sh -c 'test -f LICENSE || test -f LICENSE.md'
+          detect "Node" test -f package.json
+          detect "Python" sh -c 'test -f pyproject.toml || test -f requirements.txt'
+          detect "Go" test -f go.mod
+          detect "Rust" test -f Cargo.toml
+          detect "Java" sh -c 'test -f pom.xml || test -f build.gradle || test -f build.gradle.kts'
+          detect ".NET" sh -c 'find . -maxdepth 4 \( -name "*.sln" -o -name "*.csproj" \) | grep -q .'
+          detect "C/C++" test -f CMakeLists.txt
+          detect "Docker" sh -c 'test -f Dockerfile || test -f compose.yml || test -f docker-compose.yml'
+
+      - name: run available checks
+        run: |
+          set -euo pipefail
+
+          if test -f package.json; then
+            if test -f package-lock.json; then
+              npm ci
+            else
+              npm install
+            fi
+            npm test --if-present
+          else
+            echo "Skipping Node checks"
+          fi
+
+          if test -f pyproject.toml || test -f requirements.txt; then
+            python -m compileall .
+          else
+            echo "Skipping Python checks"
+          fi
+
+          if test -f go.mod; then
+            go test ./...
+          else
+            echo "Skipping Go checks"
+          fi
+
+          if test -f Cargo.toml; then
+            cargo test
+          else
+            echo "Skipping Rust checks"
+          fi
+
+          if test -f pom.xml; then
+            mvn test
+          elif test -x ./gradlew; then
+            ./gradlew test
+          else
+            echo "Skipping Java checks"
+          fi
+
+          if find . -maxdepth 4 \( -name "*.sln" -o -name "*.csproj" \) | grep -q .; then
+            dotnet test
+          else
+            echo "Skipping .NET checks"
+          fi
+
+          if test -f CMakeLists.txt; then
+            cmake -S . -B build
+            cmake --build build
+            ctest --test-dir build --output-on-failure
+          else
+            echo "Skipping C/C++ checks"
+          fi
+
+          if test -f Dockerfile; then
+            docker build --no-cache -t mise-salt-shaker-check:ci .
+          else
+            echo "Skipping Docker checks"
+          fi
