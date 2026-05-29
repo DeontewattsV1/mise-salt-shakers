@@ -1,0 +1,49 @@
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  check_run:
+    types: [completed]
+  check_suite:
+    types: [completed]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  dependabot:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Enable auto-merge
+        run: |
+          pr_number=${{ github.event.pull_request.number }}
+          
+          # Check if PR is already merged or not mergeable
+          mergeable=$(gh pr view "$pr_number" --json mergeable --jq '.mergeable')
+          if [ "$mergeable" != "true" ]; then
+            echo "PR #$pr_number is not mergeable, skipping"
+            exit 0
+          fi
+          
+          # Get combined status
+          status=$(gh pr view "$pr_number" --json statusCheckRollup --jq '.statusCheckRollup')
+          if [ "$status" == "null" ] || [ -z "$status" ]; then
+            echo "No status checks found, waiting for checks to register..."
+            exit 0
+          fi
+          
+          # Check if all checks are successful
+          failed=$(gh pr view "$pr_number" --json statusCheckRollup --jq '[.statusCheckRollup[] | select(.conclusion != "SUCCESS")] | length')
+          
+          if [ "$failed" == "0" ]; then
+            echo "All checks passed, enabling auto-merge for PR #$pr_number"
+            gh pr merge --admin --squash "$pr_number"
+          else
+            echo "Some checks failed or are still running, will retry when checks complete"
+            exit 0
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
