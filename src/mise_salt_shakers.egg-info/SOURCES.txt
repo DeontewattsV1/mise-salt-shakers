@@ -1,0 +1,11 @@
+LICENSE
+README.md
+pyproject.toml
+src/mise_salt_shakers/__init__.py
+src/mise_salt_shakers/detector.py
+src/mise_salt_shakers.egg-info/PKG-INFO
+src/mise_salt_shakers.egg-info/SOURCES.txt
+src/mise_salt_shakers.egg-info/dependency_links.txt
+src/mise_salt_shakers.egg-info/requires.txt
+src/mise_salt_shakers.egg-info/top_level.txt
+tests/test_detector.py
